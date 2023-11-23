@@ -13,14 +13,13 @@ import typing
 import copy
 from threading import Thread
 
-
 # Constants
-LOOK_AHEAD_FACTOR = 1
-DEPTH_LIMIT = 6
+LOOK_AHEAD_FACTOR = 15
+DEPTH_LIMIT = 7
 
 COLLISION_VALUE = 0.0
 NORMAL_VALUE = 0.1
-FOOD_VALUE = 1.0
+FOOD_VALUE = 50.0
 
 
 # info is called when you create your Battlesnake on play.battlesnake.com
@@ -32,9 +31,9 @@ def info() -> typing.Dict:
     return {
         "apiversion": "1",
         "author": "Kam & Zach",
-        "color": "#888888",  # TODO: Choose color
-        "head": "default",  # TODO: Choose head
-        "tail": "default",  # TODO: Choose tail
+        "color": "#FDD835",
+        "head": "top-hat",
+        "tail": "rose",
     }
 
 
@@ -52,7 +51,6 @@ def end(game_state: typing.Dict):
 # Valid moves are "up", "down", "left", or "right"
 # See https://docs.battlesnake.com/api/example-move for available data
 def move(game_state: typing.Dict) -> typing.Dict:
-
     start_time = time.perf_counter()
 
     is_move_safe = {
@@ -65,9 +63,13 @@ def move(game_state: typing.Dict) -> typing.Dict:
     id = game_state["you"]["id"]
     body = game_state["you"]["body"]
     length = game_state["you"]["length"]
-    head = body[0]   # Coordinates of "head"
-    neck = body[1]   # Coordinates of "neck"
-    tail = body[-1]  # Coordinated of "tail"
+    head = body[0]  # Coordinates of "head"
+    neck = body[1]  # Coordinates of "neck"
+    tail = body[-1]  # Coordinates of "tail"
+    my_snake = Snake()
+    my_snake.append(tail['x'], tail['y'])
+    my_snake.append(neck['x'], neck['y'])
+    my_snake.append(head['x'], head['y'])
 
     board_width = game_state['board']['width']
     board_height = game_state['board']['height']
@@ -128,7 +130,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
     # =========================================================================
 
     safe_moves = [[], []]
-    best_moves = []
+    best_move = "down"
     best_score = 0
 
     for direction, is_safe in is_move_safe.items():
@@ -143,35 +145,25 @@ def move(game_state: typing.Dict) -> typing.Dict:
         threads = []
         for index in range(len(safe_moves[0])):
             direction = safe_moves[0][index]
-            starting_position = {}
 
             if direction == "up":
-                starting_position = {"x": head["x"], "y": head["y"] + 1}
+                my_snake.append(my_snake.head.getx(), my_snake.head.gety() + 1)
             elif direction == "down":
-                starting_position = {"x": head["x"], "y": head["y"] - 1}
+                my_snake.append(my_snake.head.getx(), my_snake.head.gety() - 1)
             elif direction == "right":
-                starting_position = {"x": head["x"] + 1, "y": head["y"]}
+                my_snake.append(my_snake.head.getx() + 1, my_snake.head.gety())
             elif direction == "left":
-                starting_position = {"x": head["x"] - 1, "y": head["y"]}
+                my_snake.append(my_snake.head.getx() - 1, my_snake.head.gety())
 
-            new_board = copy.deepcopy(board)
-            new_board[head["x"]][head["y"]] = -1
+            # new_board = copy.deepcopy(board)
+            # new_board[head["x"]][head["y"]] = -1
 
-            new_thread = Thread(target=next_move, args=(new_board, starting_position, 1, length if length < DEPTH_LIMIT else DEPTH_LIMIT, safe_moves[1], index))
-            threads.append(new_thread)
-            new_thread.start()
+            new_score = next_move(board, my_snake, 1)
+            safe_moves[1][index] = new_score
 
-        for t in range(len(threads)):
-            threads[t].join()
-
-        for j in range(len(safe_moves[0])):
-            if safe_moves[1][j] > best_score:
-                best_moves = [safe_moves[0][j]]
-                best_score = safe_moves[1][j]
-            elif safe_moves[1][j] == best_score:
-                best_moves.append(safe_moves[0][j])
-
-        best_move = random.choice(best_moves)
+            if new_score > best_score:
+                best_move = direction
+                best_score = new_score
 
     print(f"SAFE MOVES: {[safe_move for safe_move in safe_moves]}")
     print(f"SCORES: {safe_moves}")
@@ -203,96 +195,102 @@ def print_board(board: [[int]]) -> None:
     print(print_string)
 
 
-def next_move(board, position, count, depth, result, result_index) -> float:
-    weight = 1 / count * LOOK_AHEAD_FACTOR
-    threads = []
-    thread_scores = [0 for _ in range(4)]
-    score = 0
+def next_move(board, snake, count) -> float:
+    weight = 1 / (count * LOOK_AHEAD_FACTOR)
+    ate = False
+
+    # Evaluate position
+    if board[snake.head.getx()][snake.head.gety()] > 0:
+        print("IRAN")
+        score = FOOD_VALUE * weight
+        ate = True
+    else:
+        score = NORMAL_VALUE * weight
+        board[snake.tail.getx()][snake.tail.gety()] = 0
+        snake.tail = snake.tail.next
 
     # BASE CASE:
 
-    if count == depth:
+    if count == DEPTH_LIMIT:
         return score
 
     # RECURSIVE CASES:
 
     # direction: UP
-    if position["y"] + 1 >= len(board[0]) or board[position["x"]][position["y"] + 1] < 0:
-        up_score = 0
-    else:
-        if board[position["x"]][position["y"] + 1] > 0:
-            up_score = FOOD_VALUE * weight
-        else:
-            up_score = NORMAL_VALUE * weight
+    if snake.head.gety() + 1 < len(board[0]) and board[snake.head.getx()][snake.head.gety() + 1] >= 0:
         # update board and current position
-        new_board = copy.deepcopy(board)
-        new_board[position["x"]][position["y"] + 1] = -1
-        new_position = {"x": position["x"], "y": position["y"] + 1}
+        # new_board = copy.deepcopy(board)
+        board[snake.head.getx()][snake.head.gety() + 1] = -1
+        snake.append(snake.head.getx(), snake.head.gety() + 1)
         # recursively find next score
-        up_thread = Thread(target=next_move, args=(new_board, new_position, count + 1, depth, thread_scores, 0))
-        threads.append(up_thread)
-        up_thread.start()
+        score += next_move(board, snake, count + 1)
 
     # direction: DOWN
-    if position["y"] <= 0 or board[position["x"]][position["y"] - 1] < 0:
-        down_score = 0
-    else:
-        if board[position["x"]][position["y"] - 1] > 0:
-            down_score = FOOD_VALUE * weight
-        else:
-            down_score = NORMAL_VALUE * weight
+    if snake.head.gety() > 0 and board[snake.head.getx()][snake.head.gety() - 1] >= 0:
         # update board and current position
-        new_board = copy.deepcopy(board)
-        new_board[position["x"]][position["y"] - 1] = -1
-        new_position = {"x": position["x"], "y": position["y"] - 1}
+        #new_board = copy.deepcopy(board)
+        board[snake.head.getx()][snake.head.gety() - 1] = -1
+        snake.append(snake.head.getx(), snake.head.gety() - 1)
         # recursively find next score
-        down_thread = Thread(target=next_move, args=(new_board, new_position, count + 1, depth, thread_scores, 1))
-        threads.append(down_thread)
-        down_thread.start()
+        score += next_move(board, snake, count + 1)
 
     # direction: RIGHT
-    if position["x"] + 1 >= len(board) or board[position["x"] + 1][position["y"]] < 0:
-        right_score = 0
-    else:
-        if board[position["x"] + 1][position["y"]] > 0:
-            right_score = FOOD_VALUE * weight
-        else:
-            right_score = NORMAL_VALUE * weight
+    if snake.head.getx() + 1 < len(board) and board[snake.head.getx() + 1][snake.head.gety()] >= 0:
         # update board and current position
-        new_board = copy.deepcopy(board)
-        new_board[position["x"] + 1][position["y"]] = -1
-        new_position = {"x": position["x"] + 1, "y": position["y"]}
+        #new_board = copy.deepcopy(board)
+        board[snake.head.getx() + 1][snake.head.gety()] = -1
+        snake.append(snake.head.getx() + 1, snake.head.gety())
         # recursively find next score
-        right_thread = Thread(target=next_move, args=(new_board, new_position, count + 1, depth, thread_scores, 2))
-        threads.append(right_thread)
-        right_thread.start()
+        score += next_move(board, snake, count + 1)
 
     # direction: LEFT
-    if position["x"] <= 0 or board[position["x"] - 1][position["y"]] < 0:
-        left_score = 0
-    else:
-        if board[position["x"] - 1][position["y"]] > 0:
-            left_score = FOOD_VALUE * weight
-        else:
-            left_score = NORMAL_VALUE * weight
+    if snake.head.getx() > 0 and board[snake.head.getx() - 1][snake.head.gety()] >= 0:
         # update board and current position
-        new_board = copy.deepcopy(board)
-        new_board[position["x"] - 1][position["y"]] = -1
-        new_position = {"x": position["x"] - 1, "y": position["y"]}
+        #new_board = copy.deepcopy(board)
+        board[snake.head.getx() - 1][snake.head.gety()] = -1
+        snake.append(snake.head.getx() - 1, snake.head.gety())
         # recursively find next score
-        left_thread = Thread(target=next_move, args=(new_board, new_position, count + 1, depth, thread_scores, 3))
-        threads.append(left_thread)
-        left_thread.start()
+        score += next_move(board, snake, count + 1)
 
-    for i in range(len(threads)):
-        threads[i].join()
+    if ate:
+        board[snake.head.getx()][snake.head.gety()] = 1
+    else:
+        snake.tail = snake.tail.prev
+        board[snake.tail.getx()][snake.tail.gety()] = -1
+        board[snake.head.getx()][snake.head.gety()] = 0
+    snake.head = snake.head.prev
 
-    up_score += thread_scores[0]
-    down_score += thread_scores[1]
-    right_score += thread_scores[2]
-    left_score += thread_scores[3]
+    return score
 
-    result[result_index] = (up_score + down_score + right_score + left_score) / 3
+
+class Node:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.next = None
+        self.prev = None
+
+    def gety(self):
+        return self.y
+
+    def getx(self):
+        return self.x
+
+
+class Snake:
+    def __init__(self):
+        self.head = None
+        self.tail = None
+
+    def append(self, x, y):
+        new_node = Node(x, y)
+        if not self.head:
+            self.head = new_node
+            self.tail = new_node
+        else:
+            self.head.next = new_node
+            new_node.prev = self.head
+            self.head = new_node
 
 
 # Start server when `python main.py` is run
