@@ -10,8 +10,6 @@
 import random
 import time
 import typing
-# import copy
-# from threading import Thread
 
 # Constants
 LOOK_AHEAD_FACTOR = 0.1
@@ -26,8 +24,6 @@ FOOD_VALUE = 1.0
 # and controls your Battlesnake's appearance
 # TIP: If you open your Battlesnake URL in a browser you should see this data
 def info() -> typing.Dict:
-    print("INFO")
-
     return {
         "apiversion": "1",
         "author": "Kam & Zach",
